@@ -156,7 +156,7 @@ def trigger_request(url:str):
     return data
 
 
-def get_pm25(aqicn_url: str, country: str, city: str, street: str, day: datetime.date, AQI_API_KEY: str):
+def get_wt(batch_location: str, latitude: float, longitude: float):
     """
     Returns DataFrame with air quality (pm25) as dataframe
     """
@@ -180,16 +180,16 @@ def get_pm25(aqicn_url: str, country: str, city: str, street: str, day: datetime
     if data['status'] == 'ok':
         # Extract the air quality data
         aqi_data = data['data']
-        aq_today_df = pd.DataFrame()
-        aq_today_df['pm25'] = [aqi_data['iaqi'].get('pm25', {}).get('v', None)]
-        aq_today_df['pm25'] = aq_today_df['pm25'].astype('float32')
+        wt_today_df = pd.DataFrame()
+        wt_today_df['pm25'] = [aqi_data['iaqi'].get('pm25', {}).get('v', None)]
+        wt_today_df['pm25'] = aq_today_df['pm25'].astype('float32')
 
-        aq_today_df['country'] = country
-        aq_today_df['city'] = city
-        aq_today_df['street'] = street
-        aq_today_df['date'] = day
-        aq_today_df['date'] = pd.to_datetime(aq_today_df['date'])
-        aq_today_df['url'] = aqicn_url
+        wt_today_df['country'] = country
+        wt_today_df['city'] = city
+        wt_today_df['street'] = street
+        wt_today_df['date'] = day
+        wt_today_df['date'] = pd.to_datetime(wt_today_df['date'])
+        wt_today_df['url'] = aqicn_url
     else:
         print("Error: There may be an incorrect  URL for your Sensor or it is not contactable right now. The API response does not contain data.  Error message:", data['data'])
         raise requests.exceptions.RequestException(data['data'])
