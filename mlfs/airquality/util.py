@@ -15,70 +15,62 @@ import hopsworks
 import hsfs
 from pathlib import Path
 
-def get_historical_weather(target_time_df, start_date,  end_date, latitude, longitude):
-    # latitude, longitude = get_city_coordinates(city)
+def get_historical_weather(target_time_df, start_date, end_date, latitude, longitude):
+    cache_session = requests_cache.CachedSession(".cache", expire_after=-1)
+    retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
+    openmeteo = openmeteo_requests.Client(session=retry_session)
 
-    # Setup the Open-Meteo API client with cache and retry on error
-    cache_session = requests_cache.CachedSession('.cache', expire_after = -1)
-    retry_session = retry(cache_session, retries = 5, backoff_factor = 0.2)
-    openmeteo = openmeteo_requests.Client(session = retry_session)
-
-    # Make sure all required weather variables are listed here
-    # The order of variables in hourly or daily is important to assign them correctly below
     url = "https://archive-api.open-meteo.com/v1/archive"
     params = {
         "latitude": latitude,
         "longitude": longitude,
         "start_date": start_date,
         "end_date": end_date,
-        "daily": ["temperature_2m_mean", "precipitation_sum", "wind_speed_10m_max", "wind_direction_10m_dominant"]
+        # ✅ hourly variables (not daily ones)
+        "hourly": ["temperature_2m", "precipitation", "wind_speed_10m", "wind_direction_10m"],
+        "timezone": "Europe/Stockholm",
     }
-    responses = openmeteo.weather_api(url, params=params)
 
-    # Process first location. Add a for-loop for multiple locations or weather models
-    response = responses[0]
-    print(f"Coordinates {response.Latitude()}°N {response.Longitude()}°E")
-    print(f"Elevation {response.Elevation()} m asl")
-    print(f"Timezone {response.Timezone()} {response.TimezoneAbbreviation()}")
-    print(f"Timezone difference to GMT+0 {response.UtcOffsetSeconds()} s")
+    response = openmeteo.weather_api(url, params=params)[0]
 
-    # Process daily data. The order of variables needs to be the same as requested.
     hourly = response.Hourly()
-    hourly_temperature_2m_mean = hourly.Variables(0).ValuesAsNumpy()
-    hourly_precipitation_sum = hourly.Variables(1).ValuesAsNumpy()
-    hourly_wind_speed_10m_max = hourly.Variables(2).ValuesAsNumpy()
-    hourly_wind_direction_10m_dominant = hourly.Variables(3).ValuesAsNumpy()
+    if hourly is None:
+        raise RuntimeError(
+            "No hourly data returned. This usually happens if the requested hourly variables are invalid "
+            "or the date range/location has no coverage."
+        )
 
-    hourly_data = {"date": pd.date_range(
-        start = pd.to_datetime(hourly.Time(), unit = "s"),
-        end = pd.to_datetime(hourly.TimeEnd(), unit = "s"),
-        freq = pd.Timedelta(seconds = hourly.Interval()),
-        inclusive = "left"
-    )}
-    hourly_data["temperature_2m_mean"] = hourly_temperature_2m_mean
-    hourly_data["precipitation_sum"] = hourly_precipitation_sum
-    hourly_data["wind_speed_10m_max"] = hourly_wind_speed_10m_max
-    hourly_data["wind_direction_10m_dominant"] = hourly_wind_direction_10m_dominant
+    h_temp = hourly.Variables(0).ValuesAsNumpy()
+    h_prec = hourly.Variables(1).ValuesAsNumpy()
+    h_wspd = hourly.Variables(2).ValuesAsNumpy()
+    h_wdir = hourly.Variables(3).ValuesAsNumpy()
 
-    hourly_dataframe = pd.DataFrame(data = hourly_data)
-    hourly_dataframe = hourly_dataframe.dropna()
+    hourly_df = pd.DataFrame({
+        "date": pd.date_range(
+            start=pd.to_datetime(hourly.Time(), unit="s"),
+            end=pd.to_datetime(hourly.TimeEnd(), unit="s"),
+            freq=pd.Timedelta(seconds=hourly.Interval()),
+            inclusive="left",
+        ),
+        "temperature_2m": h_temp,
+        "precipitation": h_prec,
+        "wind_speed_10m": h_wspd,
+        "wind_direction_10m": h_wdir,
+    }).dropna()
 
-    #Filter to only get hours water temperature is noted
-    target_time_df["rounded"] = target_time_df["target_time"].dt.round("H")
+    # Round both sides to the nearest hour and merge
+    hourly_df["rounded"] = pd.to_datetime(hourly_df["date"]).dt.round("H")
 
-    # Extract just date + rounded time for matching
-    hourly_dataframe["day"] = hourly_dataframe["rounded"].dt.date
-    hourly_dataframe["time"] = hourly_dataframe["rounded"].dt.time
+    target_time_df = target_time_df.copy()
+    target_time_df["formatted_time"] = pd.to_datetime(target_time_df["formatted_time"])
+    target_time_df["rounded"] = target_time_df["formatted_time"].dt.round("H")
 
-    target_time_df["day"] = target_time_df["rounded"].dt.date
-    target_time_df["time"] = target_time_df["rounded"].dt.time
-
-    # Merge on day + time → gives you the closest hourly weather row for each target
-    filtered_weather_df = pd.merge(target_time_df[["day","time"]],
-                        hourly_dataframe,
-                        on=["day","time"],
-                        how="left")
-    return filtered_weather_df
+    merged = target_time_df.merge(
+        hourly_df.drop(columns=["date"]),
+        on="rounded",
+        how="left",
+    )
+    return merged
 
 def get_hourly_weather_forecast(city, latitude, longitude):
 
