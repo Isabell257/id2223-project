@@ -101,6 +101,7 @@ def get_hourly_weather_forecast(latitude, longitude):
     # Process hourly data. The order of variables needs to be the same as requested.
 
     hourly = response.Hourly()
+    print(f"Hourly: {hourly}")
     hourly_temperature_2m = hourly.Variables(0).ValuesAsNumpy()
     hourly_precipitation = hourly.Variables(1).ValuesAsNumpy()
     hourly_wind_speed_10m = hourly.Variables(2).ValuesAsNumpy()
@@ -148,9 +149,9 @@ def trigger_request(url:str):
     return data
 
 
-def get_wt(saveToCsv: bool=False):
-    startDate = "2025-12-17"
-    endDate = "2025-12-17"
+def get_wt(saveToCsv: bool=False, startDate = "2025-12-19", endDate = "2025-12-19"):
+    
+    
     url = f"https://api.sodertalje.se/GETALLwatertemp?start={startDate}&end={endDate}"
     resp = requests.get(url)
     data = resp.json()
@@ -163,8 +164,8 @@ def get_wt(saveToCsv: bool=False):
     df["formatted_time"] = pd.to_datetime(df["formatted_time"], format="%b %d %Y %H:%M:%S").dt.floor("min")
     df["date"] = df["formatted_time"].dt.date
     df = df.sort_values(["alias", "formatted_time"]).reset_index(drop=True)
-    midday = df["formatted_time"].dt.hour.between(10, 15)  # 10:00–15:59
-    df = df[midday]
+    #midday = df["formatted_time"].dt.hour.between(10, 15)  # 10:00–15:59
+    #df = df[midday]
 
     counts = (
     df.groupby(["alias", "date"])
@@ -200,10 +201,11 @@ def get_wt(saveToCsv: bool=False):
         final_df[["temp_water","formatted_time","alias","latitude","longitude"]].to_csv(
         "watertemp_midday_deduped.csv", index=False, encoding="utf-8"
         )
-    #out = df[["temp_water","formatted_time","alias","latitude","longitude"]]#beach[["temp_water", "formatted_time", "alias", "latitude", "longitude"]]
-    #out.to_csv("watertemp_midday.csv", index=False, encoding="utf-8")
-    #print("Saved:", len(out), "rows to watertemp_midday.csv")
+    out = df[["temp_water","formatted_time","alias","latitude","longitude"]]#beach[["temp_water", "formatted_time", "alias", "latitude", "longitude"]]
+    out.to_csv("watertemp_midday.csv", index=False, encoding="utf-8")
+    print("Saved:", len(out), "rows to watertemp_midday.csv")
     return final_df[["temp_water","formatted_time","alias","latitude","longitude"]]
+
 
 
 def plot_water_temp_forecast(bath_location: str, df: pd.DataFrame, file_path: str, hindcast=False):
