@@ -72,7 +72,7 @@ def get_historical_weather(target_time_df, start_date, end_date, latitude, longi
     )
     return merged
 
-def get_hourly_weather_forecast(city, latitude, longitude):
+def get_hourly_weather_forecast(latitude, longitude):
 
     # latitude, longitude = get_city_coordinates(city)
 
@@ -112,10 +112,10 @@ def get_hourly_weather_forecast(city, latitude, longitude):
         freq = pd.Timedelta(seconds = hourly.Interval()),
         inclusive = "left"
     )}
-    hourly_data["temperature_2m_mean"] = hourly_temperature_2m
-    hourly_data["precipitation_sum"] = hourly_precipitation
-    hourly_data["wind_speed_10m_max"] = hourly_wind_speed_10m
-    hourly_data["wind_direction_10m_dominant"] = hourly_wind_direction_10m
+    hourly_data["temperature_2m"] = hourly_temperature_2m
+    hourly_data["precipitation"] = hourly_precipitation
+    hourly_data["wind_speed_10m"] = hourly_wind_speed_10m
+    hourly_data["wind_direction_10m"] = hourly_wind_direction_10m
 
     hourly_dataframe = pd.DataFrame(data = hourly_data)
     hourly_dataframe = hourly_dataframe.dropna()
@@ -148,45 +148,62 @@ def trigger_request(url:str):
     return data
 
 
-def get_wt(batch_location: str, latitude: float, longitude: float):
-    """
-    Returns DataFrame with air quality (pm25) as dataframe
-    """
-    # The API endpoint URL
-    url = f"{aqicn_url}/?token={AQI_API_KEY}"
+def get_wt(saveToCsv: bool=False):
+    startDate = "2025-12-17"
+    endDate = "2025-12-17"
+    url = f"https://api.sodertalje.se/GETALLwatertemp?start={startDate}&end={endDate}"
+    resp = requests.get(url)
+    data = resp.json()
+    
+    
+    df = pd.DataFrame(data)
+    df = df[(df["type"] == "Watertemp")]
+    df = df.dropna()
 
-    # Make a GET request to fetch the data from the API
-    data = trigger_request(url)
+    df["formatted_time"] = pd.to_datetime(df["formatted_time"], format="%b %d %Y %H:%M:%S").dt.floor("min")
+    df["date"] = df["formatted_time"].dt.date
+    df = df.sort_values(["alias", "formatted_time"]).reset_index(drop=True)
+    midday = df["formatted_time"].dt.hour.between(10, 15)  # 10:00–15:59
+    df = df[midday]
 
-    # if we get 'Unknown station' response then retry with city in url
-    if data['data'] == "Unknown station":
-        url1 = f"https://api.waqi.info/feed/{country}/{street}/?token={AQI_API_KEY}"
-        data = trigger_request(url1)
+    counts = (
+    df.groupby(["alias", "date"])
+      .size()
+      .reset_index(name="n_rows")
+    )
 
-    if data['data'] == "Unknown station":
-        url2 = f"https://api.waqi.info/feed/{country}/{city}/{street}/?token={AQI_API_KEY}"
-        data = trigger_request(url2)
+    # We only want the cases where a date repeats (more than 1 row that day):
+    repeats = counts[counts["n_rows"] > 1].sort_values(["alias", "date"])
+    #print(repeats)
+    dup_rows = df.merge(repeats[["alias", "date"]], on=["alias", "date"], how="inner")
 
+    noon = dup_rows["formatted_time"].dt.normalize() + pd.Timedelta(hours=12)
+    #print(noon)
+    dup_rows["delta_to_noon"] = (dup_rows["formatted_time"] - noon).abs()
+    closest_dup = (
+    dup_rows.sort_values(["alias", "date", "delta_to_noon", "formatted_time"])
+            .drop_duplicates(subset=["alias", "date"], keep="first")
+    )
 
-    # Check if the API response contains the data
-    if data['status'] == 'ok':
-        # Extract the air quality data
-        aqi_data = data['data']
-        wt_today_df = pd.DataFrame()
-        wt_today_df['pm25'] = [aqi_data['iaqi'].get('pm25', {}).get('v', None)]
-        wt_today_df['pm25'] = aq_today_df['pm25'].astype('float32')
+    # all non-duplicate (alias,date) rows:
+    non_dup = df.merge(repeats[["alias", "date"]], on=["alias", "date"], how="left", indicator=True)
+    non_dup = non_dup[non_dup["_merge"] == "left_only"].drop(columns=["_merge"])
 
-        wt_today_df['country'] = country
-        wt_today_df['city'] = city
-        wt_today_df['street'] = street
-        wt_today_df['date'] = day
-        wt_today_df['date'] = pd.to_datetime(wt_today_df['date'])
-        wt_today_df['url'] = aqicn_url
-    else:
-        print("Error: There may be an incorrect  URL for your Sensor or it is not contactable right now. The API response does not contain data.  Error message:", data['data'])
-        raise requests.exceptions.RequestException(data['data'])
+    # final dataset
+    final_df = (
+        pd.concat([non_dup, closest_dup], ignore_index=True)
+        .sort_values(["alias", "formatted_time"])
+        .reset_index(drop=True)
+    )
 
-    return aq_today_df
+    if saveToCsv:
+        final_df[["temp_water","formatted_time","alias","latitude","longitude"]].to_csv(
+        "watertemp_midday_deduped.csv", index=False, encoding="utf-8"
+        )
+    #out = df[["temp_water","formatted_time","alias","latitude","longitude"]]#beach[["temp_water", "formatted_time", "alias", "latitude", "longitude"]]
+    #out.to_csv("watertemp_midday.csv", index=False, encoding="utf-8")
+    #print("Saved:", len(out), "rows to watertemp_midday.csv")
+    return final_df[["temp_water","formatted_time","alias","latitude","longitude"]]
 
 
 def plot_air_quality_forecast(city: str, street: str, df: pd.DataFrame, file_path: str, hindcast=False):
