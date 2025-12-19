@@ -101,6 +101,7 @@ def get_hourly_weather_forecast(latitude, longitude):
     # Process hourly data. The order of variables needs to be the same as requested.
 
     hourly = response.Hourly()
+    print(f"Hourly: {hourly}")
     hourly_temperature_2m = hourly.Variables(0).ValuesAsNumpy()
     hourly_precipitation = hourly.Variables(1).ValuesAsNumpy()
     hourly_wind_speed_10m = hourly.Variables(2).ValuesAsNumpy()
