@@ -81,3 +81,7 @@ titanic-inference:
 
 titanic-all: titanic-features titanic-train titanic-inference
 
+wt-inference:
+	ipython notebooks/algae_bloom/2_water_temperature_feature_pipeline.ipynb
+	ipython notebooks/algae_bloom/4_water_temperature_batch_inference.ipynb
+
