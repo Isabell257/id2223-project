@@ -6,6 +6,7 @@ import pandas as pd
 import json
 from geopy.geocoders import Nominatim
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from matplotlib.patches import Patch
 from matplotlib.ticker import MultipleLocator
 import openmeteo_requests
@@ -14,6 +15,7 @@ from retry_requests import retry
 import hopsworks
 import hsfs
 from pathlib import Path
+from datetime import date
 
 def get_historical_weather(target_time_df, start_date, end_date, latitude, longitude):
     cache_session = requests_cache.CachedSession(".cache", expire_after=-1)
@@ -150,9 +152,9 @@ def trigger_request(url:str):
 
 
 def get_wt(saveToCsv: bool=False, startDate = "2025-12-19", endDate = "2025-12-19"):
+    today_str = date.today().strftime("%Y-%m-%d")
     
-    
-    url = f"https://api.sodertalje.se/GETALLwatertemp?start={startDate}&end={endDate}"
+    url = f"https://api.sodertalje.se/GETALLwatertemp?start={today_str}&end={today_str}"
     resp = requests.get(url)
     data = resp.json()
     
@@ -216,20 +218,23 @@ def plot_water_temp_forecast(bath_location: str, df: pd.DataFrame, file_path: st
     ax.plot(day, df['predicted_temp_water'], label='Predicted Water Temperature', color='red', linewidth=2, marker='o', markersize=5, markerfacecolor='blue')
 
     # Set the y-axis to a logarithmic scale
-    ax.set_yscale('log')
-    ax.set_yticks([0, 10, 25, 50, 100, 250, 500])
-    ax.get_yaxis().set_major_formatter(plt.ScalarFormatter())
-    ax.set_ylim(bottom=1)
+    ax.set_yscale('linear')
+    #ax.set_yticks([0, 10, 25, 50, 100, 250, 500])
+    #ax.get_yaxis().set_major_formatter(plt.ScalarFormatter())
+    ax.set_ylim(df['predicted_temp_water'].min() - 1, df['predicted_temp_water'].max() + 1)
+    #ax.set_ylim(bottom=1)
 
     # Set the labels and title
     ax.set_xlabel('Date')
-    ax.set_title(f"Predicted Water Temperature (Logarithmic Scale) for {bath_location}")
+    ax.set_title(f"Predicted Water Temperature for {bath_location}")
     ax.set_ylabel('Water Temperature')
 
     # Aim for ~10 annotated values on x-axis, will work for both forecasts ans hindcasts
-    if len(df.index) > 11:
-        every_x_tick = len(df.index) / 10
-        ax.xaxis.set_major_locator(MultipleLocator(every_x_tick))
+    #if len(df.index) > 11:
+    #    every_x_tick = len(df.index) / 10
+    #    ax.xaxis.set_major_locator(MultipleLocator(every_x_tick))
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=6, maxticks=10))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
 
     plt.xticks(rotation=45)
 

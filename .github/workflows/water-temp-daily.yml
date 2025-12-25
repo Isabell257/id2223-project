@@ -38,7 +38,7 @@ jobs:
           commit_message: "Water Temperature Dashboard published"
           commit_options: '--no-verify --signoff'
 
-          file_pattern: 'docs/water_temp/**/*.html docs/water_temp/**/*.png docs/_includes/*'
+          file_pattern: 'docs/water_temp/*.html docs/water_temp/*/*.png'
 
           repository: .
 
