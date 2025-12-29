@@ -72,6 +72,45 @@ def get_historical_weather(target_time_df, start_date, end_date, latitude, longi
         on="rounded",
         how="left",
     )
+    # -----------------------------
+    # Daily solar features for YESTERDAY
+    # -----------------------------
+    # We fetch daily values for [start_date-1, end_date-1] so each measurement date maps to "yesterday".
+    start_dt = pd.to_datetime(start_date).date()
+    end_dt   = pd.to_datetime(end_date).date()
+    solar_start = (start_dt - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+    solar_end   = (end_dt   - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+
+    params_daily = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "start_date": solar_start,
+        "end_date": solar_end,
+        "daily": ["shortwave_radiation_sum", "sunshine_duration"],
+        "timezone": "Europe/Stockholm",
+    }
+
+    response_daily = openmeteo.weather_api(url, params=params_daily)[0]
+    daily = response_daily.Daily()
+
+    d_sw_sum    = daily.Variables(0).ValuesAsNumpy()
+    d_sunshine  = daily.Variables(1).ValuesAsNumpy() / 3600
+
+    daily_df = pd.DataFrame({
+        "solar_date": pd.date_range(
+            start=pd.to_datetime(daily.Time(), unit="s"),
+            end=pd.to_datetime(daily.TimeEnd(), unit="s"),
+            freq=pd.Timedelta(seconds=daily.Interval()),
+            inclusive="left",
+        ).date,
+        "shortwave_radiation_sum_yday": d_sw_sum,
+        "sunshine_duration_yday": d_sunshine,
+    })
+
+    # For a measurement at e.g. 2025-06-10 12:00 -> attach solar totals for 2025-06-09
+    merged["solar_date"] = (merged["rounded"] - pd.Timedelta(days=1)).dt.date
+    merged = merged.merge(daily_df, on="solar_date", how="left").drop(columns=["solar_date"])
+
     return merged
 
 def get_hourly_weather_forecast(latitude, longitude):
@@ -89,7 +128,8 @@ def get_hourly_weather_forecast(latitude, longitude):
     params = {
         "latitude": latitude,
         "longitude": longitude,
-        "hourly": ["temperature_2m", "precipitation", "wind_speed_10m", "wind_direction_10m"]
+        "hourly": ["temperature_2m", "precipitation", "wind_speed_10m", "wind_direction_10m"],
+        "timezone": "Europe/Stockholm",
     }
     responses = openmeteo.weather_api(url, params=params)
 
@@ -122,6 +162,89 @@ def get_hourly_weather_forecast(latitude, longitude):
 
     hourly_dataframe = pd.DataFrame(data = hourly_data)
     hourly_dataframe = hourly_dataframe.dropna()
+        # -----------------------------
+    # Daily solar features for "yesterday" relative to each hourly timestamp.
+    #
+    # solar_date = date(date) - 1 day
+    # For solar_date in the past (<= yesterday), use archive.
+    # For solar_date in the future (>= today), use forecast.
+    # Units:
+    #   shortwave_radiation_sum_yday: MJ/m² per day
+    #   sunshine_duration_yday: seconds per day
+    #   daylight_duration_yday: seconds per day
+    # -----------------------------
+    tz = "Europe/Stockholm"
+    today = pd.Timestamp.now(tz=tz).date()
+    yesterday = today - datetime.timedelta(days=1)
+
+    hourly_dataframe["solar_date"] = (pd.to_datetime(hourly_dataframe["date"]) - pd.Timedelta(days=1)).dt.date
+    solar_min = hourly_dataframe["solar_date"].min()
+    solar_max = hourly_dataframe["solar_date"].max()
+
+    daily_parts = []
+
+
+    # 1) Known/archived solar dates
+    past_start = solar_min
+    past_end = min(solar_max, yesterday)
+    if past_start <= past_end:
+        archive_url = "https://archive-api.open-meteo.com/v1/archive"
+        params_daily_past = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "start_date": past_start.strftime("%Y-%m-%d"),
+            "end_date": past_end.strftime("%Y-%m-%d"),
+            "daily": ["shortwave_radiation_sum", "sunshine_duration"],
+            "timezone": tz,
+        }
+        resp_past = openmeteo.weather_api(archive_url, params=params_daily_past)[0]
+        daily_past = resp_past.Daily()
+        if daily_past is not None:
+            daily_parts.append(pd.DataFrame({
+            "solar_date": pd.date_range(
+                start=pd.to_datetime(daily_past.Time(), unit="s"),
+                end=pd.to_datetime(daily_past.TimeEnd(), unit="s"),
+                freq=pd.Timedelta(seconds=daily_past.Interval()),
+                inclusive="left",
+            ).date,
+            "shortwave_radiation_sum_yday": daily_past.Variables(0).ValuesAsNumpy(),
+            "sunshine_duration_yday": daily_past.Variables(1).ValuesAsNumpy() / 3600, 
+        }))
+
+    # 2) Forecast solar dates (today and forward)
+    future_start = max(solar_min, today)
+    future_end = solar_max
+    if future_start <= future_end:
+        forecast_url = "https://api.open-meteo.com/v1/ecmwf"
+        params_daily_future = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "start_date": future_start.strftime("%Y-%m-%d"),
+            "end_date": future_end.strftime("%Y-%m-%d"),
+            "daily": ["shortwave_radiation_sum", "sunshine_duration"],
+            "timezone": tz,
+        }
+        resp_future = openmeteo.weather_api(forecast_url, params=params_daily_future)[0]
+        daily_future = resp_future.Daily()
+        if daily_future is not None:
+            daily_parts.append(pd.DataFrame({
+            "solar_date": pd.date_range(
+                start=pd.to_datetime(daily_future.Time(), unit="s"),
+                end=pd.to_datetime(daily_future.TimeEnd(), unit="s"),
+                freq=pd.Timedelta(seconds=daily_future.Interval()),
+                inclusive="left",
+            ).date,
+            "shortwave_radiation_sum_yday": daily_future.Variables(0).ValuesAsNumpy(),
+            "sunshine_duration_yday": daily_future.Variables(1).ValuesAsNumpy() / 3600, 
+        }))
+
+    if daily_parts:
+        daily_df = pd.concat(daily_parts, ignore_index=True).drop_duplicates(subset=["solar_date"])
+        hourly_dataframe = hourly_dataframe.merge(daily_df, on="solar_date", how="left")
+
+    hourly_dataframe = hourly_dataframe.drop(columns=["solar_date"])
+    hourly_dataframe = hourly_dataframe.dropna()
+
     return hourly_dataframe
 
 

@@ -14,5 +14,6 @@ seaborn
 nbformat
 Faker
 invoke
+catboost
 python-dotenv
 #feldera==0.41
