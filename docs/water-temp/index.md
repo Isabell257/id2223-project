@@ -1,3 +1,7 @@
+---
+layout: default
+---
+{% include dropdown.html %}
 # Water Temperature at Bath Locations in Södertälje - Dashboard
 <h3>Select a location:</h3>
 <select onchange="if (this.value) window.location.href=this.value">
