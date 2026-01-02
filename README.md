@@ -2,7 +2,7 @@
 
 This project aims to predict the water temperature at Bathing sits at Södertäljje kommun, using their open water temperature data (https://www.dataportal.se/datasets/75_7058 and https://www.dataportal.se/datasets/75_7659) and weather data from openmeteo (https://open-meteo.com/). It is a batch ML system making daily predictions of water temperature. The predictions can be seen in the UI linked below.
 
-Link to UI:
+Link to UI: [Result dashboard](https://isabell257.github.io/id2223-project/water-temp/)
 
 ## Feature pipeline
 The feature pipeline is divided into two notebooks, one for feature backfill mode and one that is run daily using github actions to update the data with today's water temperature and weather data for today and forecast for predictions. The features are stored in two seperate feature groups, one with water temperature data and one with weather data. Lagged features are created as a model-independent transformations and data is checked for missing values and validated using Great Expectations with Hopsworks feature store.
