@@ -1,0 +1,13 @@
+# Water Temperature at Bath Locations in Södertälje - Dashboard
+<h3>Select a location:</h3>
+<select onchange="if (this.value) window.location.href=this.value">
+  <option value="">-- Select --</option>
+  <option value="bergabadet.html">Bergabadet</option>
+  <option value="bränningestrand.html">Bränningestrand</option>
+  <option value="eklundsnäsbadet.html">Eklundsnäsbadet</option>
+  <option value="farstanäsbadet.html">Farstanäsbadet</option>
+  <option value="mälarbadet.html">Mälarbadet</option>
+  <option value="näsets_udde.html">Näsets udde (Glashyttan)</option>
+  <option value="underåsbadet.html">Underåsbadet</option>
+  <option value="åbynäsbadet.html">Åbynäsbadet</option>
+</select>
