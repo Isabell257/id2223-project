@@ -1,6 +1,8 @@
-# Project for ID2223
+# Water Temperature Predictions for Bathing Sites in Södertälje
 
-This project aims to predict the water temperature at Bathing sits at Södertäljje kommun, using their open water temperature data (https://www.dataportal.se/datasets/75_7058 and https://www.dataportal.se/datasets/75_7659) and weather data from openmeteo (https://open-meteo.com/). It is a batch ML system making daily predictions of water temperature. The predictions can be seen in the UI linked below.
+Project in course ID2223
+
+This project aims to predict the water temperature at Bathing sites at Södertäljje kommun, using their open water temperature data (https://www.dataportal.se/datasets/75_7058 and https://www.dataportal.se/datasets/75_7659) and weather data from openmeteo (https://open-meteo.com/). It is a batch ML system making daily predictions of water temperature. The predictions can be seen in the UI linked below.
 
 Link to UI: [Result Dashboard](https://isabell257.github.io/id2223-project/water-temp/)
 
