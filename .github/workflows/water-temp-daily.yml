@@ -3,7 +3,7 @@ name: water-temp-daily
 on:
   workflow_dispatch:
   schedule:
-    - cron: '11 6 * * *'
+    - cron: '0 16 * * *'
 
 jobs:
   schedule_pipelines:
